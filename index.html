@@ -24,8 +24,8 @@
         import { ARButton } from 'https://unpkg.com/three@0.155.0/examples/jsm/webxr/ARButton.js';
 
         let camera, scene, renderer;
-        let referenceQuaternion;
-        const lookDownThreshold = Math.PI / 6; // 30 degrees threshold for looking down
+        let referencePitch;
+        const lookDownThreshold = THREE.MathUtils.degToRad(30); // 30 degrees in radians
 
         const postureAlert = document.getElementById('posture-alert');
 
@@ -36,7 +36,6 @@
             scene = new THREE.Scene();
 
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1.6, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
@@ -77,24 +76,30 @@
 
         function calibratePosture() {
             const xrCamera = renderer.xr.getCamera();
-            referenceQuaternion = xrCamera.quaternion.clone();
-            console.log('Posture calibrated');
+
+            // Extract the pitch angle from the camera's quaternion
+            const euler = new THREE.Euler().setFromQuaternion(xrCamera.quaternion, 'YXZ');
+            referencePitch = euler.x;
+            console.log('Posture calibrated at pitch:', THREE.MathUtils.radToDeg(referencePitch).toFixed(2), 'degrees');
+
             // Start monitoring posture
             isPostureMonitoringActive = true;
         }
 
         function checkPosture() {
-            if (!isPostureMonitoringActive || !referenceQuaternion) return;
+            if (!isPostureMonitoringActive || referencePitch === undefined) return;
 
             const xrCamera = renderer.xr.getCamera();
 
-            // Calculate the angle between the current look direction and the reference (calibrated) look direction
-            const currentDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCamera.quaternion);
-            const referenceDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(referenceQuaternion);
-            const angle = currentDirection.angleTo(referenceDirection);
+            // Get the current pitch angle
+            const euler = new THREE.Euler().setFromQuaternion(xrCamera.quaternion, 'YXZ');
+            const currentPitch = euler.x;
+
+            // Calculate the difference in pitch from the calibrated position
+            const pitchDifference = currentPitch - referencePitch;
 
             // Check if the user is looking down more than the threshold
-            if (angle > lookDownThreshold && currentDirection.y < referenceDirection.y) {
+            if (pitchDifference > lookDownThreshold) {
                 if (badPostureStartTime === null) {
                     badPostureStartTime = performance.now();
                 } else if (performance.now() - badPostureStartTime > 5000) {
