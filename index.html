@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebXR Posture Monitor</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #posture-alert {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.2);
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="posture-alert"></div>
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.155.0/build/three.module.js';
+        import { ARButton } from 'https://unpkg.com/three@0.155.0/examples/jsm/webxr/ARButton.js';
+
+        let camera, scene, renderer;
+        let referenceQuaternion;
+        const lookDownThreshold = Math.PI / 6; // 30 degrees threshold for looking down
+
+        const postureAlert = document.getElementById('posture-alert');
+
+        let isPostureMonitoringActive = false; // Flag to control posture monitoring
+        let badPostureStartTime = null;
+
+        function init() {
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['local-floor'] }));
+
+            renderer.xr.addEventListener('sessionstart', onSessionStarted);
+            renderer.xr.addEventListener('sessionend', onSessionEnded);
+
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Start rendering loop
+            renderer.setAnimationLoop(render);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onSessionStarted() {
+            console.log('AR session started');
+            // Set up calibration after a short delay
+            setTimeout(calibratePosture, 2000);
+        }
+
+        function onSessionEnded() {
+            console.log('AR session ended');
+            isPostureMonitoringActive = false;
+            badPostureStartTime = null;
+            postureAlert.style.display = 'none';
+        }
+
+        function calibratePosture() {
+            const xrCamera = renderer.xr.getCamera();
+            referenceQuaternion = xrCamera.quaternion.clone();
+            console.log('Posture calibrated');
+            // Start monitoring posture
+            isPostureMonitoringActive = true;
+        }
+
+        function checkPosture() {
+            if (!isPostureMonitoringActive || !referenceQuaternion) return;
+
+            const xrCamera = renderer.xr.getCamera();
+
+            // Calculate the angle between the current look direction and the reference (calibrated) look direction
+            const currentDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(xrCamera.quaternion);
+            const referenceDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(referenceQuaternion);
+            const angle = currentDirection.angleTo(referenceDirection);
+
+            // Check if the user is looking down more than the threshold
+            if (angle > lookDownThreshold && currentDirection.y < referenceDirection.y) {
+                if (badPostureStartTime === null) {
+                    badPostureStartTime = performance.now();
+                } else if (performance.now() - badPostureStartTime > 5000) {
+                    // Bad posture for more than 5 seconds
+                    postureAlert.style.display = 'block';
+                }
+            } else {
+                // Reset the timer
+                badPostureStartTime = null;
+                postureAlert.style.display = 'none';
+            }
+        }
+
+        function render() {
+            checkPosture();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
