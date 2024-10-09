@@ -10,15 +10,27 @@
     <link rel='stylesheet' href='css/common.css'>
 
     <title>Posture Tracker AR</title>
+    <style>
+      #posture-warning {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 0, 0, 0.3);
+        display: none;
+        z-index: 1000;
+        pointer-events: none;
+      }
+    </style>
   </head>
   <body>
     <div id="overlay">
       <header>
         <details open>
-          <summary>Posture Tracker WebXR DOM Overlay</summary>
+          <summary>Posture Tracker WebXR</summary>
           <p>
-            This sample demonstrates a simple posture tracker using WebXR.
-            It will show an alert when poor posture is detected.
+            This application tracks your head posture in AR and displays a warning when your posture is poor.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -28,10 +40,11 @@
         </details>
       </header>
     </div>
+    <div id="posture-warning"></div>
     <main style='text-align: center;'>
       <p>Click 'Enter AR' to start posture tracking</p>
     </main>
-    <script>
+    <script type="module">
       // XR globals.
       let xrButton = document.getElementById('xr-button');
       let xrSession = null;
@@ -39,6 +52,9 @@
 
       // WebGL scene globals.
       let gl = null;
+
+      // Posture warning element
+      let postureWarning = document.getElementById('posture-warning');
 
       function checkSupportedState() {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
@@ -105,43 +121,41 @@
         xrSession = null;
         xrButton.innerHTML = 'Enter AR';
         document.getElementById('session-info').innerHTML = '';
-        document.getElementById('warning-zone').innerText = '';
         gl = null;
+        postureWarning.style.display = 'none';
       }
 
       function onXRFrame(t, frame) {
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
-        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
-
-        const width = session.renderState.baseLayer.framebufferWidth;
-        const height = session.renderState.baseLayer.framebufferHeight;
-        gl.enable(gl.SCISSOR_TEST);
-        gl.scissor(width / 4, height / 4, width / 2, height / 2);
-        let time = Date.now();
-        gl.clearColor(Math.cos(time / 2000), Math.cos(time / 4000), Math.cos(time / 6000), 0.5);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
         let pose = frame.getViewerPose(xrRefSpace);
         if (pose) {
           const p = pose.transform.position;
           document.getElementById('pose').innerText = "Position: " +
             p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3);
-          
-          // Check if the posture is poor
+
+          // Check if posture is poor
           if (p.y <= -0.014 && p.z >= 0.019) {
-            document.getElementById('overlay').style.display = 'block';
-            document.getElementById('warning-zone').innerText = "Poor posture detected! Please sit up straight.";
+            postureWarning.style.display = 'block';
+            // Update the color of the warning
+            let time = Date.now();
+            let r = Math.cos(time / 2000) * 0.5 + 0.5;
+            let g = Math.cos(time / 4000) * 0.5 + 0.5;
+            let b = Math.cos(time / 6000) * 0.5 + 0.5;
+            postureWarning.style.backgroundColor = `rgba(${r * 255}, ${g * 255}, ${b * 255}, 0.3)`;
           } else {
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('warning-zone').innerText = "";
+            postureWarning.style.display = 'none';
           }
         } else {
           document.getElementById('pose').innerText = "Position: (null pose)";
-          document.getElementById('overlay').style.display = 'none';
-          document.getElementById('warning-zone').innerText = "";
+          postureWarning.style.display = 'none';
         }
+
+        // Clear the entire viewport
+        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       }
 
       initXR();
