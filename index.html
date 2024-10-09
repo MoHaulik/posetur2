@@ -8,29 +8,17 @@
     <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
     <link rel='icon' type='image/png' sizes='96x96' href='favicon-96x96.png'>
     <link rel='stylesheet' href='css/common.css'>
-
-    <title>Posture Tracker AR</title>
-    <style>
-      #posture-warning {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(255, 0, 0, 0.3);
-        display: none;
-        z-index: 1000;
-        pointer-events: none;
-      }
-    </style>
+    <title>Barebones AR with Headset Tracking</title>
   </head>
   <body>
     <div id="overlay">
       <header>
         <details open>
-          <summary>Posture Tracker WebXR</summary>
+          <summary>Barebones WebXR DOM Overlay</summary>
           <p>
-            This application tracks your head posture in AR and displays a warning when your posture is poor.
+            This sample demonstrates extremely simple use of an "immersive-ar"
+            session with no library dependencies, with an optional DOM overlay.
+            It draws a rectangle with a slowly changing color when you look downwards.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -39,10 +27,9 @@
           <button id="xr-button" class="barebones-button" disabled>XR not found</button>
         </details>
       </header>
-      <div id="posture-warning"></div>
     </div>
     <main style='text-align: center;'>
-      <p>Click 'Enter AR' to start posture tracking</p>
+      <p>Click 'Enter AR' to see content</p>
     </main>
     <script type="module">
       // XR globals.
@@ -52,9 +39,6 @@
 
       // WebGL scene globals.
       let gl = null;
-
-      // Posture warning element
-      let postureWarning = document.getElementById('posture-warning');
 
       function checkSupportedState() {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
@@ -83,6 +67,7 @@
 
       function onButtonClicked() {
         if (!xrSession) {
+          // Ask for an optional DOM Overlay
           navigator.xr.requestSession('immersive-ar', {
             optionalFeatures: ['dom-overlay'],
             domOverlay: {root: document.getElementById('overlay')}
@@ -96,6 +81,7 @@
         xrSession = session;
         xrButton.innerHTML = 'Exit AR';
 
+        // Show which type of DOM Overlay got enabled (if any)
         if (session.domOverlayState) {
           document.getElementById('session-info').innerHTML = 'DOM Overlay type: ' + session.domOverlayState.type;
         }
@@ -117,46 +103,83 @@
         console.error(ex.message);
       }
 
+      function onEndSession(session) {
+        session.end();
+      }
+
       function onSessionEnded(event) {
         xrSession = null;
         xrButton.innerHTML = 'Enter AR';
         document.getElementById('session-info').innerHTML = '';
         gl = null;
-        postureWarning.style.display = 'none';
       }
 
       function onXRFrame(t, frame) {
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
+        // Bind the framebuffer for rendering
+        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
+
+        // Get the viewer's pose in the reference space
         let pose = frame.getViewerPose(xrRefSpace);
         if (pose) {
           const p = pose.transform.position;
-          document.getElementById('pose').innerText = "Position: " +
-            p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3);
+          const q = pose.transform.orientation;
 
-          // Check if posture is poor (y <= -0.000 AND z >= 0.019)
-          if (p.y <= -0.000 && p.z >= 0.019) {
-            postureWarning.style.display = 'block';
-            // Update the color of the warning
-            let time = Date.now();
-            let r = Math.cos(time / 2000) * 0.5 + 0.5;
-            let g = Math.cos(time / 4000) * 0.5 + 0.5;
-            let b = Math.cos(time / 6000) * 0.5 + 0.5;
-            postureWarning.style.backgroundColor = `rgba(${r * 255}, ${g * 255}, ${b * 255}, 0.3)`;
+          // Compute pitch angle from the quaternion
+          // Reference for conversion: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+          const sinp = 2 * (q.w * q.x - q.y * q.z);
+          let pitch;
+          if (Math.abs(sinp) >= 1) {
+            // Use 90 degrees if out of range
+            pitch = Math.PI / 2 * Math.sign(sinp);
           } else {
-            postureWarning.style.display = 'none';
+            pitch = Math.asin(sinp);
+          }
+          const pitchDegrees = pitch * (180 / Math.PI);
+
+          // Display the position and pitch angle
+          document.getElementById('pose').innerText = "Position: " +
+            p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3) +
+            " | Pitch: " + pitchDegrees.toFixed(2) + "°";
+
+          // Check if the user is looking downwards (pitch less than -30 degrees)
+          if (pitchDegrees < -30) {
+            // User is looking downwards; render the rectangle
+            const width = session.renderState.baseLayer.framebufferWidth;
+            const height = session.renderState.baseLayer.framebufferHeight;
+
+            // Enable scissor test to restrict rendering to a rectangle
+            gl.enable(gl.SCISSOR_TEST);
+            gl.scissor(width / 4, height / 4, width / 2, height / 2);
+
+            // Calculate dynamic color based on time
+            let time = Date.now();
+            gl.clearColor(
+              Math.cos(time / 2000),
+              Math.cos(time / 4000),
+              Math.cos(time / 6000),
+              0.5
+            );
+
+            // Clear the color and depth buffers within the scissor rectangle
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+            // Disable scissor test after rendering
+            gl.disable(gl.SCISSOR_TEST);
+          } else {
+            // User is not looking downwards; do not render the rectangle
+            // Optionally clear the scissor test if it was previously enabled
+            gl.disable(gl.SCISSOR_TEST);
           }
         } else {
+          // If no pose is available
           document.getElementById('pose').innerText = "Position: (null pose)";
-          postureWarning.style.display = 'none';
         }
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       }
 
+      // Initialize WebXR
       initXR();
     </script>
   </body>
