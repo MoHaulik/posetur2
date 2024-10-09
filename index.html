@@ -10,29 +10,15 @@
     <link rel='stylesheet' href='css/common.css'>
 
     <title>Posture Tracker AR</title>
-    <style>
-      #poor-posture-alert {
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: rgba(255, 0, 0, 0.8);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        font-size: 24px;
-        z-index: 1000;
-      }
-    </style>
   </head>
   <body>
     <div id="overlay">
       <header>
         <details open>
-          <summary>WebXR Posture Tracker</summary>
+          <summary>Posture Tracker WebXR DOM Overlay</summary>
           <p>
-            This application tracks your head posture and alerts you when it's poor.
+            This sample demonstrates a simple posture tracker using WebXR.
+            It will show an alert when poor posture is detected.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -43,10 +29,9 @@
       </header>
     </div>
     <main style='text-align: center;'>
-      <p>Click 'Enter AR' to start tracking your posture</p>
+      <p>Click 'Enter AR' to start posture tracking</p>
     </main>
-    <div id="poor-posture-alert">Poor Posture Detected!</div>
-    <script type="module">
+    <script>
       // XR globals.
       let xrButton = document.getElementById('xr-button');
       let xrSession = null;
@@ -120,7 +105,7 @@
         xrSession = null;
         xrButton.innerHTML = 'Enter AR';
         document.getElementById('session-info').innerHTML = '';
-        document.getElementById('poor-posture-alert').style.display = 'none';
+        document.getElementById('warning-zone').innerText = '';
         gl = null;
       }
 
@@ -143,16 +128,19 @@
           const p = pose.transform.position;
           document.getElementById('pose').innerText = "Position: " +
             p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3);
-
-          // Check for poor posture
+          
+          // Check if the posture is poor
           if (p.y <= -0.014 && p.z >= 0.019) {
-            document.getElementById('poor-posture-alert').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById('warning-zone').innerText = "Poor posture detected! Please sit up straight.";
           } else {
-            document.getElementById('poor-posture-alert').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('warning-zone').innerText = "";
           }
         } else {
           document.getElementById('pose').innerText = "Position: (null pose)";
-          document.getElementById('poor-posture-alert').style.display = 'none';
+          document.getElementById('overlay').style.display = 'none';
+          document.getElementById('warning-zone').innerText = "";
         }
       }
 
