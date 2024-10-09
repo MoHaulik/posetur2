@@ -8,7 +8,7 @@
     <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
     <link rel='icon' type='image/png' sizes='96x96' href='favicon-96x96.png'>
     <link rel='stylesheet' href='css/common.css'>
-    <title>Barebones AR with Headset Tracking</title>
+    <title>Barebones AR with Headset Tracking and Timer</title>
   </head>
   <body>
     <div id="overlay">
@@ -18,7 +18,8 @@
           <p>
             This sample demonstrates extremely simple use of an "immersive-ar"
             session with no library dependencies, with an optional DOM overlay.
-            It draws a rectangle with a slowly changing color when you look downwards.
+            It draws a rectangle with a slowly changing color after you've been
+            looking downwards for 5 seconds.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -39,6 +40,12 @@
 
       // WebGL scene globals.
       let gl = null;
+
+      // Variables for tracking head orientation and timing
+      let isLookingDown = false;
+      let lookingDownStartTime = null;
+      const LOOKING_DOWN_THRESHOLD = -30; // Pitch angle in degrees
+      const TIME_THRESHOLD = 5000; // Time in milliseconds (5 seconds)
 
       function checkSupportedState() {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
@@ -128,12 +135,10 @@
           const q = pose.transform.orientation;
 
           // Compute pitch angle from the quaternion
-          // Reference for conversion: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
           const sinp = 2 * (q.w * q.x - q.y * q.z);
           let pitch;
           if (Math.abs(sinp) >= 1) {
-            // Use 90 degrees if out of range
-            pitch = Math.PI / 2 * Math.sign(sinp);
+            pitch = Math.PI / 2 * Math.sign(sinp); // Use 90 degrees if out of range
           } else {
             pitch = Math.asin(sinp);
           }
@@ -144,39 +149,55 @@
             p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3) +
             " | Pitch: " + pitchDegrees.toFixed(2) + "°";
 
-          // Check if the user is looking downwards (pitch less than -30 degrees)
-          if (pitchDegrees < -30) {
-            // User is looking downwards; render the rectangle
-            const width = session.renderState.baseLayer.framebufferWidth;
-            const height = session.renderState.baseLayer.framebufferHeight;
+          const currentTime = Date.now();
 
-            // Enable scissor test to restrict rendering to a rectangle
-            gl.enable(gl.SCISSOR_TEST);
-            gl.scissor(width / 4, height / 4, width / 2, height / 2);
-
-            // Calculate dynamic color based on time
-            let time = Date.now();
-            gl.clearColor(
-              Math.cos(time / 2000),
-              Math.cos(time / 4000),
-              Math.cos(time / 6000),
-              0.5
-            );
-
-            // Clear the color and depth buffers within the scissor rectangle
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-            // Disable scissor test after rendering
-            gl.disable(gl.SCISSOR_TEST);
+          // Check if the user is looking downwards
+          if (pitchDegrees < LOOKING_DOWN_THRESHOLD) {
+            if (!isLookingDown) {
+              // User just started looking down; start the timer
+              isLookingDown = true;
+              lookingDownStartTime = currentTime;
+            } else {
+              // User is still looking down; check if time threshold has passed
+              if (currentTime - lookingDownStartTime >= TIME_THRESHOLD) {
+                // Time threshold passed; render the rectangle
+                renderRectangle(session, currentTime);
+              }
+            }
           } else {
-            // User is not looking downwards; do not render the rectangle
-            // Optionally clear the scissor test if it was previously enabled
+            // User is not looking downwards; reset the timer
+            isLookingDown = false;
+            lookingDownStartTime = null;
+            // Optionally disable the scissor test
             gl.disable(gl.SCISSOR_TEST);
           }
         } else {
           // If no pose is available
           document.getElementById('pose').innerText = "Position: (null pose)";
         }
+      }
+
+      function renderRectangle(session, currentTime) {
+        const width = session.renderState.baseLayer.framebufferWidth;
+        const height = session.renderState.baseLayer.framebufferHeight;
+
+        // Enable scissor test to restrict rendering to a rectangle
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(width / 4, height / 4, width / 2, height / 2);
+
+        // Calculate dynamic color based on time
+        gl.clearColor(
+          Math.cos(currentTime / 2000),
+          Math.cos(currentTime / 4000),
+          Math.cos(currentTime / 6000),
+          0.5
+        );
+
+        // Clear the color and depth buffers within the scissor rectangle
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Disable scissor test after rendering
+        gl.disable(gl.SCISSOR_TEST);
       }
 
       // Initialize WebXR
