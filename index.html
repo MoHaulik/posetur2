@@ -10,19 +10,6 @@
     <link rel='stylesheet' href='css/common.css'>
 
     <title>Posture Tracker AR</title>
-    <style>
-      #posture-warning {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(255, 0, 0, 0.3);
-        display: none;
-        z-index: 1000;
-        pointer-events: none;
-      }
-    </style>
   </head>
   <body>
     <div id="overlay">
@@ -40,7 +27,6 @@
         </details>
       </header>
     </div>
-    <div id="posture-warning"></div>
     <main style='text-align: center;'>
       <p>Click 'Enter AR' to start posture tracking</p>
     </main>
@@ -52,9 +38,7 @@
 
       // WebGL scene globals.
       let gl = null;
-
-      // Posture warning element
-      let postureWarning = document.getElementById('posture-warning');
+      let program = null;
 
       function checkSupportedState() {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
@@ -63,15 +47,13 @@
           } else {
             xrButton.innerHTML = 'AR not found';
           }
-
           xrButton.disabled = !supported;
         });
       }
 
       function initXR() {
         if (!window.isSecureContext) {
-          let message = "WebXR unavailable due to insecure context";
-          document.getElementById("warning-zone").innerText = message;
+          document.getElementById("warning-zone").innerText = "WebXR unavailable due to insecure context";
         }
 
         if (navigator.xr) {
@@ -102,14 +84,64 @@
 
         session.addEventListener('end', onSessionEnded);
         let canvas = document.createElement('canvas');
-        gl = canvas.getContext('webgl', {
-          xrCompatible: true
-        });
+        gl = canvas.getContext('webgl', { xrCompatible: true });
         session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+
+        // Set up the WebGL program
+        program = setupWebGLProgram(gl);
+
         session.requestReferenceSpace('local').then((refSpace) => {
           xrRefSpace = refSpace;
           session.requestAnimationFrame(onXRFrame);
         });
+      }
+
+      function setupWebGLProgram(gl) {
+        const vsSource = `
+          attribute vec4 aVertexPosition;
+          uniform mat4 uModelViewMatrix;
+          uniform mat4 uProjectionMatrix;
+          void main() {
+            gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+          }
+        `;
+
+        const fsSource = `
+          precision mediump float;
+          uniform vec4 uColor;
+          void main() {
+            gl_FragColor = uColor;
+          }
+        `;
+
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
+          return null;
+        }
+
+        return program;
+      }
+
+      function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+          gl.deleteShader(shader);
+          return null;
+        }
+
+        return shader;
       }
 
       function onRequestSessionError(ex) {
@@ -122,7 +154,34 @@
         xrButton.innerHTML = 'Enter AR';
         document.getElementById('session-info').innerHTML = '';
         gl = null;
-        postureWarning.style.display = 'none';
+      }
+
+      function drawWarningOverlay(gl, projectionMatrix, modelViewMatrix, color) {
+        gl.useProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [
+          -1.0,  1.0,
+           1.0,  1.0,
+          -1.0, -1.0,
+           1.0, -1.0,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const vertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
+        gl.vertexAttribPointer(vertexPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(vertexPosition);
+
+        const uModelViewMatrix = gl.getUniformLocation(program, 'uModelViewMatrix');
+        const uProjectionMatrix = gl.getUniformLocation(program, 'uProjectionMatrix');
+        const uColor = gl.getUniformLocation(program, 'uColor');
+
+        gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(uModelViewMatrix, false, modelViewMatrix);
+        gl.uniform4fv(uColor, color);
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
       function onXRFrame(t, frame) {
@@ -135,27 +194,30 @@
           document.getElementById('pose').innerText = "Position: " +
             p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3);
 
-          // Check if posture is poor (y <= -0.000 AND z >= 0.019)
-          if (p.y <= -0.000 && p.z >= 0.019) {
-            postureWarning.style.display = 'block';
-            // Update the color of the warning
-            let time = Date.now();
-            let r = Math.cos(time / 2000) * 0.5 + 0.5;
-            let g = Math.cos(time / 4000) * 0.5 + 0.5;
-            let b = Math.cos(time / 6000) * 0.5 + 0.5;
-            postureWarning.style.backgroundColor = `rgba(${r * 255}, ${g * 255}, ${b * 255}, 0.3)`;
-          } else {
-            postureWarning.style.display = 'none';
+          let isPoorPosture = p.y <= -0.000 && p.z >= 0.019;
+
+          const glLayer = session.renderState.baseLayer;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+          for (let view of pose.views) {
+            const viewport = glLayer.getViewport(view);
+            gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+
+            if (isPoorPosture) {
+              // Calculate color based on time
+              let time = Date.now();
+              let r = (Math.cos(time / 2000) * 0.5 + 0.5) * 0.7;
+              let g = (Math.cos(time / 4000) * 0.5 + 0.5) * 0.7;
+              let b = (Math.cos(time / 6000) * 0.5 + 0.5) * 0.7;
+
+              drawWarningOverlay(gl, view.projectionMatrix, view.transform.inverse.matrix, [r, g, b, 0.3]);
+            }
           }
         } else {
           document.getElementById('pose').innerText = "Position: (null pose)";
-          postureWarning.style.display = 'none';
         }
-
-        // Clear the entire viewport
-        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       }
 
       initXR();
