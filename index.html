@@ -277,7 +277,7 @@
         mat3.translate(matrix, matrix, [0, -0.4]);
 
         // Scale to stretch 30% longer on horizontal axis
-        mat3.scale(matrix, matrix, [1.3, 1.0]); // 30% longer horizontally
+        mat3.scale(matrix, matrix, [1.7, 1.0]); // 30% longer horizontally
 
         // Apply the matrix
         gl.uniformMatrix3fv(programInfo.uniformLocations.matrix, false, matrix);
