@@ -2,12 +2,12 @@
 <html>
   <head>
     <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
+    <meta name='viewport' content='width=device-width, initial-scale=no'>
     <meta name='mobile-web-app-capable' content='yes'>
     <meta name='apple-mobile-web-app-capable' content='yes'>
     <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
     <link rel='stylesheet' href='css/common.css'>
-    <title>Barebones AR with Rotated and Stretched Rectangle</title>
+    <title>Barebones AR with Stretched Rectangle</title>
   </head>
   <body>
     <div id="overlay">
@@ -17,8 +17,8 @@
           <p>
             This sample demonstrates extremely simple use of an "immersive-ar"
             session with no library dependencies, with an optional DOM overlay.
-            It draws a red transparent rectangle that's rotated 90 degrees and stretched
-            horizontally after you've been looking downwards for 5 seconds.
+            It draws a red transparent rectangle that's stretched horizontally
+            after you've been looking downwards for 5 seconds.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -43,7 +43,7 @@
       // Variables for tracking head orientation and timing
       let isLookingDown = false;
       let lookingDownStartTime = null;
-      const LOOKING_DOWN_THRESHOLD = -30; // Pitch angle in degrees
+      const LOOKING_DOWN_THRESHOLD = -20; // Pitch angle in degrees (changed from -30 to -20)
       const TIME_THRESHOLD = 5000; // Time in milliseconds (5 seconds)
 
       // Variables for the rectangle
@@ -168,7 +168,6 @@
         };
 
         // Define the rectangle vertices (in clip space coordinates)
-        // Rectangle centered at origin, width and height of 1 unit
         const positions = [
           -0.5, -0.5,
            0.5, -0.5,
@@ -274,10 +273,10 @@
         let matrix = mat3.create();
         // Translate to center of the screen
         mat3.translate(matrix, matrix, [0, 0]);
-        // Rotate 90 degrees (in radians)
-        mat3.rotate(matrix, matrix, Math.PI / 2);
+        // Note: Rotation is removed as per your request
         // Scale to stretch 40% longer on horizontal axis
-        mat3.scale(matrix, matrix, [1.4, 1.0]);
+        mat3.scale(matrix, matrix, [1.4, 1.0]); // 40% longer horizontally
+
         // Apply the matrix
         gl.uniformMatrix3fv(programInfo.uniformLocations.matrix, false, matrix);
 
@@ -323,32 +322,9 @@
         },
         translate: function(out, a, v) {
           let x = v[0], y = v[1];
-          out[0] = a[0];
-          out[1] = a[1];
-          out[2] = a[2];
-          out[3] = a[3];
-          out[4] = a[4];
-          out[5] = a[5];
           out[6] = x * a[0] + y * a[3] + a[6];
           out[7] = x * a[1] + y * a[4] + a[7];
           out[8] = x * a[2] + y * a[5] + a[8];
-          return out;
-        },
-        rotate: function(out, a, rad) {
-          let s = Math.sin(rad);
-          let c = Math.cos(rad);
-          let a00 = a[0], a01 = a[1], a02 = a[2],
-              a10 = a[3], a11 = a[4], a12 = a[5];
-
-          out[0] = c * a00 + s * a10;
-          out[1] = c * a01 + s * a11;
-          out[2] = c * a02 + s * a12;
-          out[3] = c * a10 - s * a00;
-          out[4] = c * a11 - s * a01;
-          out[5] = c * a12 - s * a02;
-          out[6] = a[6];
-          out[7] = a[7];
-          out[8] = a[8];
           return out;
         },
         scale: function(out, a, v) {
