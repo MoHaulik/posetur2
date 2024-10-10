@@ -7,7 +7,7 @@
     <meta name='apple-mobile-web-app-capable' content='yes'>
     <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
     <link rel='stylesheet' href='css/common.css'>
-    <title>Barebones AR with Stretched Rectangle</title>
+    <title>Barebones AR with Adjusted Rectangle</title>
   </head>
   <body>
     <div id="overlay">
@@ -17,8 +17,8 @@
           <p>
             This sample demonstrates extremely simple use of an "immersive-ar"
             session with no library dependencies, with an optional DOM overlay.
-            It draws a red transparent rectangle that's stretched horizontally
-            after you've been looking downwards for 5 seconds.
+            It draws a red transparent rectangle that's stretched horizontally by 30% and
+            lowered by 20% after you've been looking downwards for 5 seconds.
             <a class="back" href="./index.html">Back</a>
           </p>
           <div id="session-info"></div>
@@ -43,7 +43,7 @@
       // Variables for tracking head orientation and timing
       let isLookingDown = false;
       let lookingDownStartTime = null;
-      const LOOKING_DOWN_THRESHOLD = -20; // Pitch angle in degrees (changed from -30 to -20)
+      const LOOKING_DOWN_THRESHOLD = -20; // Pitch angle in degrees
       const TIME_THRESHOLD = 5000; // Time in milliseconds (5 seconds)
 
       // Variables for the rectangle
@@ -271,11 +271,13 @@
 
         // Compute transformation matrix
         let matrix = mat3.create();
-        // Translate to center of the screen
-        mat3.translate(matrix, matrix, [0, 0]);
-        // Note: Rotation is removed as per your request
-        // Scale to stretch 40% longer on horizontal axis
-        mat3.scale(matrix, matrix, [1.4, 1.0]); // 40% longer horizontally
+
+        // Translate to lower the rectangle by 20%
+        // In clip space, Y ranges from -1 to 1, so moving down by 0.4 units lowers it by 20% of the screen height
+        mat3.translate(matrix, matrix, [0, -0.4]);
+
+        // Scale to stretch 30% longer on horizontal axis
+        mat3.scale(matrix, matrix, [1.3, 1.0]); // 30% longer horizontally
 
         // Apply the matrix
         gl.uniformMatrix3fv(programInfo.uniformLocations.matrix, false, matrix);
@@ -322,6 +324,12 @@
         },
         translate: function(out, a, v) {
           let x = v[0], y = v[1];
+          out[0] = a[0];
+          out[1] = a[1];
+          out[2] = a[2];
+          out[3] = a[3];
+          out[4] = a[4];
+          out[5] = a[5];
           out[6] = x * a[0] + y * a[3] + a[6];
           out[7] = x * a[1] + y * a[4] + a[7];
           out[8] = x * a[2] + y * a[5] + a[8];
